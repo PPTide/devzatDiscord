@@ -16,6 +16,8 @@ github.com/leaanthony/go-ansi-parser v1.6.1 h1:xd8bzARK3dErqkPFtoF9F3/HgN8UQk0ed
 github.com/leaanthony/go-ansi-parser v1.6.1/go.mod h1:+vva/2y4alzVmmIEpk9QDhA7vLC5zKDTRwfZGOp3IWU=
 github.com/matryer/is v1.4.0 h1:sosSmIWwkYITGrxZ25ULNDeKiMNzFSr4V/eqBQP0PeE=
 github.com/matryer/is v1.4.0/go.mod h1:8I/i5uYgLzgsgEloJE1U6xx5HkBQpAZvepWuujKwMRU=
+github.com/mattn/go-sqlite3 v1.14.45 h1:6KA/spDguL3KV8rnybG7ezSaE4SeMR3KC9VbUoAQaIk=
+github.com/mattn/go-sqlite3 v1.14.45/go.mod h1:pjEuOr8IwzLJP2MfGeTb0A35jauH+C2kbHKBr7yXKVQ=
 github.com/quackduck/devzat/devzatapi v0.0.0-20260512211049-d0341b549420 h1:VnIm3RL6hdq++ypFLrLGlBHRfNmcczhIvJADMSU+JmI=
 github.com/quackduck/devzat/devzatapi v0.0.0-20260512211049-d0341b549420/go.mod h1:WDq1oVV1nNdO/CqdIFH9PyPoSOGQmZ/IYhpvzFk0D5E=
 github.com/quackduck/devzat/plugin v0.0.0-20250617152003-518d08bba115 h1:ZB2/MBwU+WbmmQvzoUDZNuZTmi7xi+svRD92CbU766U=

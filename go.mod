@@ -11,6 +11,7 @@ require (
 
 require (
 	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/mattn/go-sqlite3 v1.14.45 // indirect
 	github.com/quackduck/devzat/plugin v0.0.0-20250617152003-518d08bba115 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect
