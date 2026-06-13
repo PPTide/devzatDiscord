@@ -3,33 +3,30 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"image"
 	"image/png"
 	"net/http"
 	"os"
+	"sync"
 
+	_ "github.com/mattn/go-sqlite3"
 	api "github.com/quackduck/devzat/devzatapi"
 	"golang.org/x/image/draw"
 )
 
 var config = struct {
-	botToken     string
-	channelId    string
-	url          string
-	port         string
-	devzatURL    string
-	devzatApiKey string
+	botToken string
+	url      string
+	port     string
 }{}
 
 func init() {
 	config.botToken = EnvOrPanic("DISCORD_BOT_TOKEN")
-	config.channelId = EnvOrPanic("DISCORD_CHANNEL_ID")
 	config.url = EnvOrPanic("AVATAR_URL")
 	config.port = EnvOrDefault("AVATAR_PORT", "8080")
-	config.devzatURL = EnvOrDefault("DEVZAT_URL", "devzat.hackclub.com:5556")
-	config.devzatApiKey = EnvOrPanic("DEVZAT_API_KEY")
 }
 
 func EnvOrDefault(key, defaultValue string) string {
@@ -48,21 +45,71 @@ func EnvOrPanic(key string) string {
 	return v
 }
 
-// TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
+var idToContextCancel = make(map[uint64]context.CancelFunc)
+
+var db *sql.DB
+var dbLock = sync.Mutex{}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dis := setupDiscordBase()
+	dbLock.Lock()
+	var err error
+	db, err = sql.Open("sqlite3", "./db.sqlite")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS servers
+(
+    id         integer not null
+            primary key autoincrement,
+    guild_id   TEXT    not null
+            unique,
+    channel_id TEXT    not null
+            unique,
+    devzat_url TEXT    not null,
+    devzat_key TEXT    not null
+);`)
+	if err != nil {
+		panic(err)
+	}
+
+	dis := setupDiscordBase(ctx)
 	defer dis.close()
 	fmt.Println("Discord connected")
 
-	sendToDiscord := make(chan api.Message, 5)
-	sendToDevzat := make(chan api.Message, 5)
+	query, err := db.Query("SELECT id, guild_id, channel_id, devzat_url, devzat_key FROM servers")
+	if err != nil {
+		panic(err)
+	}
+	dbLock.Unlock()
 
-	go dis.setupDiscord(sendToDevzat, sendToDiscord, ctx)
-	go setupDevzat(sendToDiscord, sendToDevzat, ctx)
+	for query.Next() {
+		var (
+			id        uint64
+			guildID   string
+			channelID string
+			devzatURL string
+			devzatKey string
+		)
+
+		err := query.Scan(&id, &guildID, &channelID, &devzatURL, &devzatKey)
+		if err != nil {
+			panic(err)
+		}
+
+		sendToDiscord := make(chan api.Message, 5)
+		sendToDevzat := make(chan api.Message, 5)
+
+		ctx, cancel := context.WithCancel(ctx)
+		idToContextCancel[id] = cancel
+
+		go dis.setupDiscord(channelID, sendToDevzat, sendToDiscord, ctx)
+		go setupDevzat(devzatURL, devzatKey, sendToDiscord, sendToDevzat, ctx)
+	}
 
 	http.HandleFunc("/avatar/{small}", func(w http.ResponseWriter, r *http.Request) {
 		small := r.PathValue("small")
@@ -85,10 +132,52 @@ func main() {
 		}
 	})
 
-	err := http.ListenAndServe(":"+config.port, nil)
+	err = http.ListenAndServe(":"+config.port, nil)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func startNewBridgeForGuild(guildID string, newChannelID string, newDevzatURL string, newDevzatKey string, d *Discord, ctx context.Context) {
+	dbLock.Lock()
+	defer dbLock.Unlock()
+
+	if newDevzatURL == "" {
+		newDevzatURL = "devzat.hackclub.com:5556"
+	}
+
+	_, err := db.Exec(`
+INSERT OR IGNORE INTO servers (guild_id, channel_id, devzat_url, devzat_key) VALUES (?, ?, ?, ?);
+UPDATE servers SET
+	channel_id=?,
+	devzat_url=?,
+	devzat_key=?
+WHERE guild_id=?`, guildID, newChannelID, newDevzatURL, newDevzatKey, newChannelID, newDevzatURL, newDevzatKey, guildID)
+	if err != nil {
+		panic(err)
+	}
+
+	row := db.QueryRow(`SELECT id FROM servers WHERE guild_id=?`, guildID)
+
+	var id uint64
+	err = row.Scan(&id)
+	if err != nil {
+		panic(err)
+	}
+
+	cancel, ok := idToContextCancel[id]
+	if ok {
+		cancel()
+	}
+
+	sendToDiscord := make(chan api.Message, 5)
+	sendToDevzat := make(chan api.Message, 5)
+
+	ctx, cancel = context.WithCancel(ctx)
+	idToContextCancel[id] = cancel
+
+	go d.setupDiscord(newChannelID, sendToDevzat, sendToDiscord, ctx)
+	go setupDevzat(newDevzatURL, newDevzatKey, sendToDiscord, sendToDevzat, ctx)
 }
 
 func stringWithMaxLength(s string, length int) string {

@@ -6,8 +6,8 @@ import (
 	api "github.com/quackduck/devzat/devzatapi"
 )
 
-func setupDevzat(send chan<- api.Message, receive <-chan api.Message, ctx context.Context) {
-	devSess, err := api.NewSession(config.devzatURL, config.devzatApiKey)
+func setupDevzat(devzatURL, devzatApiKey string, send chan<- api.Message, receive <-chan api.Message, ctx context.Context) {
+	devSess, err := api.NewSession(devzatURL, devzatApiKey)
 	if err != nil {
 		panic(err)
 	}

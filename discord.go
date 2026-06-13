@@ -16,7 +16,8 @@ import (
 )
 
 type Discord struct {
-	session *discord.Session
+	session     *discord.Session
+	application *discord.Application
 
 	listeners map[string]chan *discord.MessageCreate
 }
@@ -28,7 +29,11 @@ func (d *Discord) registerListener(channelId string) <-chan *discord.MessageCrea
 }
 
 func (d *Discord) sendFromDiscord(channelId string, msg *discord.MessageCreate) {
-	d.listeners[channelId] <- msg
+	listener, ok := d.listeners[channelId]
+	if !ok {
+		return
+	}
+	listener <- msg
 }
 
 func (d *Discord) close() {
@@ -39,60 +44,114 @@ func (d *Discord) close() {
 
 }
 
-func setupDiscordBase() *Discord {
-	dis := Discord{
+func setupDiscordBase(ctx context.Context) *Discord {
+	d := Discord{
 		listeners: make(map[string]chan *discord.MessageCreate),
 	}
 
 	var err error
-	dis.session, err = discord.New("Bot " + config.botToken)
+	d.session, err = discord.New("Bot " + config.botToken)
 	if err != nil {
 		panic(err)
 	}
 
-	dis.session.AddHandler(func(s *discord.Session, msg *discord.MessageCreate) {
-		if msg.ChannelID != config.channelId {
+	d.application, err = d.session.Application("@me")
+	if err != nil {
+		panic(err)
+	}
+
+	var defaultMemberPermissions int64 = discord.PermissionManageGuild
+	commandCreate, err := d.session.ApplicationCommandCreate(d.application.ID, "", &discord.ApplicationCommand{
+		Type:                     discord.ChatApplicationCommand,
+		Name:                     "set_channel",
+		Contexts:                 &[]discord.InteractionContextType{discord.InteractionContextGuild},
+		IntegrationTypes:         &[]discord.ApplicationIntegrationType{discord.ApplicationIntegrationGuildInstall},
+		Description:              "test",
+		DefaultMemberPermissions: &defaultMemberPermissions,
+		Options: []*discord.ApplicationCommandOption{
+			{
+				Name:         "channel",
+				Type:         discord.ApplicationCommandOptionChannel,
+				Description:  "Channel to send messages to",
+				Required:     true,
+				ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildText},
+			},
+			{
+				Name:         "devzat_api_key",
+				Type:         discord.ApplicationCommandOptionString,
+				Description:  "Api key of the Devzat integration (Like \"dvz@...\")",
+				Required:     true,
+				ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildText},
+			},
+			{
+				Name:         "devzat_url",
+				Type:         discord.ApplicationCommandOptionString,
+				Description:  "URL of the Devzat Server (Default:\"devzat.hackclub.com:5556\")",
+				Required:     false,
+				ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildText},
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	d.session.AddHandler(func(s *discord.Session, msg *discord.MessageCreate) {
+		d.sendFromDiscord(msg.ChannelID, msg)
+	})
+	d.session.AddHandler(func(s *discord.Session, msg *discord.InteractionCreate) {
+		applicationCommand := msg.ApplicationCommandData()
+		if applicationCommand.ID != commandCreate.ID {
 			return
 		}
-		dis.sendFromDiscord(msg.ChannelID, msg)
+		selectedChannel := applicationCommand.GetOption("channel").Value.(string)
+		devzatApiKey := applicationCommand.GetOption("devzat_api_key").Value.(string)
+		devzatURL := applicationCommand.GetOption("devzat_url").Value.(string)
+		fmt.Println("Selected channel:", selectedChannel)
+		startNewBridgeForGuild(msg.GuildID, selectedChannel, devzatURL, devzatApiKey, &d, ctx)
+		err := s.InteractionRespond(msg.Interaction, &discord.InteractionResponse{
+			Type: discord.InteractionResponseChannelMessageWithSource,
+			Data: &discord.InteractionResponseData{
+				Content: fmt.Sprintf("Channel successfully set to #%s", applicationCommand.Resolved.Channels[selectedChannel].Name),
+				Flags:   discord.MessageFlagsEphemeral,
+			},
+		})
+		if err != nil {
+			panic(err)
+		}
 	})
-	dis.session.Identify.Intents = discord.IntentsGuildMessages
+	d.session.Identify.Intents = discord.IntentsGuildMessages
 
-	err = dis.session.Open()
+	err = d.session.Open()
 	if err != nil {
 		panic(err)
 	}
 
-	return &dis
+	return &d
 }
 
-func (d *Discord) setupDiscord(send chan<- api.Message, receive <-chan api.Message, ctx context.Context) {
-	webhook, err := d.session.ChannelWebhooks(config.channelId)
-	//webhook, err := disSess.WebhookCreate(config.channelId, "Devzat Webhook", "")
-	if err != nil {
-		panic(err)
-	}
-
-	application, err := d.session.Application("@me")
+func (d *Discord) setupDiscord(channelId string, send chan<- api.Message, receive <-chan api.Message, ctx context.Context) {
+	webhook, err := d.session.ChannelWebhooks(channelId)
+	//webhook, err := disSess.WebhookCreate(channelId, "Devzat Webhook", "")
 	if err != nil {
 		panic(err)
 	}
 
 	var thisAppWebhook *discord.Webhook = nil
 	for _, w := range webhook {
-		if w.ApplicationID == application.ID {
+		if w.ApplicationID == d.application.ID {
 			thisAppWebhook = w
 		}
 	}
 
 	if thisAppWebhook == nil {
-		thisAppWebhook, err = d.session.WebhookCreate(config.channelId, "Devzat Bridge", "")
+		thisAppWebhook, err = d.session.WebhookCreate(channelId, "Devzat Bridge", "")
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	discordListener := d.registerListener(config.channelId)
+	discordListener := d.registerListener(channelId)
 
 	for {
 		select {
