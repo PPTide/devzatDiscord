@@ -114,7 +114,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer disSess.Close()
+	defer func(disSess *discord.Session) {
+		err := disSess.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(disSess)
 
 	http.HandleFunc("/avatar/{small}", func(w http.ResponseWriter, r *http.Request) {
 		small := r.PathValue("small")
@@ -177,6 +182,7 @@ func main() {
 }
 
 func getAvatarImage(name string) image.Image {
+	name = stringWithMaxLength(name, 256)
 	if name == "" {
 		img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
 		img.Set(0, 0, image.Transparent)
@@ -190,6 +196,10 @@ func getAvatarImage(name string) image.Image {
 	img := image.NewNRGBA(image.Rect(0, 0, len(styledTexts), 3))
 
 	for x, styledText := range styledTexts {
+		if styledText.FgCol == nil {
+			styledText.FgCol = ansi.Cols[7]
+		}
+
 		img.Set(x, 1, color.RGBA{R: styledText.FgCol.Rgb.R, G: styledText.FgCol.Rgb.G, B: styledText.FgCol.Rgb.B, A: 255})
 		if styledText.BgCol != nil {
 			img.Set(x, 0, color.RGBA{R: styledText.BgCol.Rgb.R, G: styledText.BgCol.Rgb.G, B: styledText.BgCol.Rgb.B, A: 255})
