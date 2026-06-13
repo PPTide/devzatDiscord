@@ -19,7 +19,6 @@ import (
 
 var config = struct {
 	botToken     string
-	appId        string
 	channelId    string
 	url          string
 	port         string
@@ -29,7 +28,6 @@ var config = struct {
 
 func init() {
 	config.botToken = EnvOrPanic("DISCORD_BOT_TOKEN")
-	config.appId = EnvOrPanic("DISCORD_APP_ID")
 	config.channelId = EnvOrPanic("DISCORD_CHANNEL_ID")
 	config.url = EnvOrPanic("AVATAR_URL")
 	config.port = EnvOrDefault("AVATAR_PORT", "8080")
@@ -77,9 +75,14 @@ func main() {
 		panic(err)
 	}
 
+	application, err := disSess.Application("@me")
+	if err != nil {
+		panic(err)
+	}
+
 	var thisAppWebhook *discord.Webhook = nil
 	for _, w := range webhook {
-		if w.ApplicationID == config.appId {
+		if w.ApplicationID == application.ID {
 			thisAppWebhook = w
 		}
 	}
