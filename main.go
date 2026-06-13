@@ -91,6 +91,31 @@ func main() {
 		}
 	}
 
+	disSess.AddHandler(func(s *discord.Session, msg *discord.MessageCreate) {
+		if msg.ChannelID != config.channelId {
+			return
+		}
+		if msg.WebhookID == thisAppWebhook.ID {
+			return
+		}
+
+		err := devSess.SendMessage(api.Message{
+			Room: "#main",
+			From: "\x1b[95mD@\x1b[0m " + msg.Author.Username,
+			Data: msg.Content,
+		})
+		if err != nil {
+			fmt.Printf("Error sending message: %s\n", err)
+		}
+	})
+	disSess.Identify.Intents = discord.IntentsGuildMessages
+
+	err = disSess.Open()
+	if err != nil {
+		panic(err)
+	}
+	defer disSess.Close()
+
 	http.HandleFunc("/avatar/{small}", func(w http.ResponseWriter, r *http.Request) {
 		small := r.PathValue("small")
 
