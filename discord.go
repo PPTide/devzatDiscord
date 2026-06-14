@@ -106,7 +106,11 @@ func setupDiscordBase(ctx context.Context) *Discord {
 		}
 		selectedChannel := applicationCommand.GetOption("channel").Value.(string)
 		devzatApiKey := applicationCommand.GetOption("devzat_api_key").Value.(string)
-		devzatURL := applicationCommand.GetOption("devzat_url").Value.(string)
+		devzatURLOption := applicationCommand.GetOption("devzat_url")
+		devzatURL := "devzat.hackclub.com:5556"
+		if devzatURLOption != nil {
+			devzatURL = devzatURLOption.Value.(string)
+		}
 		fmt.Println("Selected channel:", selectedChannel)
 		startNewBridgeForGuild(msg.GuildID, selectedChannel, devzatURL, devzatApiKey, &d, ctx)
 		err := s.InteractionRespond(msg.Interaction, &discord.InteractionResponse{
