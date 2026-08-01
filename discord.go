@@ -174,31 +174,40 @@ func (d *Discord) setupDiscord(channelId string, send *messageSendFunc, ctx cont
 			}
 			for len(cleanMsg) > 0 {
 				var thisMsg string
-				if len(cleanMsg) > 2000 {
-					thisMsg = cleanMsg[:2000]
+				const maxMsgSize = 3500
+				if len(cleanMsg) > maxMsgSize {
+					thisMsg = cleanMsg[:maxMsgSize]
 					if lastIdx := strings.LastIndexAny(thisMsg, "\n "); lastIdx != -1 {
 						thisMsg = cleanMsg[:lastIdx]
 						cleanMsg = cleanMsg[lastIdx:]
 					} else {
-						thisMsg = cleanMsg[:2000]
-						cleanMsg = cleanMsg[2000:]
+						thisMsg = cleanMsg[:maxMsgSize]
+						cleanMsg = cleanMsg[maxMsgSize:]
 					}
 				} else {
 					thisMsg = cleanMsg
 					cleanMsg = cleanMsg[:0]
 				}
 				_, err = d.session.WebhookExecute(thisAppWebhook.ID, thisAppWebhook.Token, true, &discord.WebhookParams{
-					Content:         thisMsg,
-					Username:        stringWithMaxLength(cleanSender, 80),
-					AvatarURL:       getAvatarLink(msg.From),
-					TTS:             false,
-					Files:           nil,
-					Components:      nil,
+					//Content:         thisMsg,
+					Username:  stringWithMaxLength(cleanSender, 80),
+					AvatarURL: getAvatarLink(msg.From),
+					TTS:       false,
+					Files:     nil,
+					Components: []discord.MessageComponent{
+						discord.TextDisplay{
+							Content: thisMsg,
+						},
+					},
 					Embeds:          nil,
 					Attachments:     nil,
 					AllowedMentions: nil,
-					Flags:           0,
+					Flags:           1 << 15,
 					ThreadName:      "",
+				}, func(cfg *discord.RequestConfig) {
+					urlQuery := cfg.Request.URL.Query()
+					urlQuery.Set("with_components", "true")
+					cfg.Request.URL.RawQuery = urlQuery.Encode()
 				})
 				if err != nil {
 					panic(fmt.Sprintf("error executing webhook: %e", err))
