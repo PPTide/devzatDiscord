@@ -221,6 +221,12 @@ func (d *Discord) setupDiscord(channelId string, send *messageSendFunc, ctx cont
 						continue
 					}
 
+					for _, attachment := range msg.Attachments {
+						if attachment.Height > 0 && attachment.Width > 0 {
+							msg.Content += fmt.Sprintf("\n![%s](%s)", attachment.URL, attachment.URL)
+						}
+					}
+
 					(*send)(api.Message{
 						Room: "#main",
 						From: "\x1b[95mD@\x1b[0m " + msg.Author.Username,
