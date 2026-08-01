@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"net/url"
+	"strings"
 
 	discord "github.com/bwmarrin/discordgo"
 	"github.com/leaanthony/go-ansi-parser"
@@ -134,7 +136,7 @@ func setupDiscordBase(ctx context.Context) *Discord {
 	return &d
 }
 
-func (d *Discord) setupDiscord(channelId string, send chan<- api.Message, receive <-chan api.Message, ctx context.Context) {
+func (d *Discord) setupDiscord(channelId string, send *messageSendFunc, ctx context.Context) (messageSendFunc, func()) {
 	webhook, err := d.session.ChannelWebhooks(channelId)
 	//webhook, err := disSess.WebhookCreate(channelId, "Devzat Webhook", "")
 	if err != nil {
@@ -157,48 +159,69 @@ func (d *Discord) setupDiscord(channelId string, send chan<- api.Message, receiv
 
 	discordListener := d.registerListener(channelId)
 
-	for {
-		select {
-		case msg := <-receive:
-			cleanSender, err := ansi.Cleanse(msg.From)
+	return func(msg api.Message) {
+			cleanSender, err := ansi.Cleanse(msg.From, ansi.WithIgnoreInvalidCodes())
 			if err != nil {
-				panic(err)
+				//panic(err)
+				fmt.Println(errors.Join(errors.New(fmt.Sprintf("got error while cleansing sender: %v", []rune(msg.From))), err))
+				return
 			}
-			cleanMsg, err := ansi.Cleanse(msg.Data)
+			cleanMsg, err := ansi.Cleanse(msg.Data, ansi.WithIgnoreInvalidCodes())
 			if err != nil {
-				panic(err)
+				//panic(err)
+				fmt.Println(errors.Join(errors.New(fmt.Sprintf("got error while cleansing msg: %v", []rune(msg.Data))), err))
+				return
 			}
-			//fmt.Printf("Listener received: %+v\n", msg)
-			_, err = d.session.WebhookExecute(thisAppWebhook.ID, thisAppWebhook.Token, true, &discord.WebhookParams{
-				Content:         cleanMsg,
-				Username:        stringWithMaxLength(cleanSender, 80),
-				AvatarURL:       getAvatarLink(msg.From),
-				TTS:             false,
-				Files:           nil,
-				Components:      nil,
-				Embeds:          nil,
-				Attachments:     nil,
-				AllowedMentions: nil,
-				Flags:           0,
-				ThreadName:      "",
-			})
-			if err != nil {
-				panic(fmt.Sprintf("error executing webhook %+v", err))
+			for len(cleanMsg) > 0 {
+				var thisMsg string
+				if len(cleanMsg) > 2000 {
+					thisMsg = cleanMsg[:2000]
+					if lastIdx := strings.LastIndexAny(thisMsg, "\n "); lastIdx != -1 {
+						thisMsg = cleanMsg[:lastIdx]
+						cleanMsg = cleanMsg[lastIdx:]
+					} else {
+						thisMsg = cleanMsg[:2000]
+						cleanMsg = cleanMsg[2000:]
+					}
+				} else {
+					thisMsg = cleanMsg
+					cleanMsg = cleanMsg[:0]
+				}
+				_, err = d.session.WebhookExecute(thisAppWebhook.ID, thisAppWebhook.Token, true, &discord.WebhookParams{
+					Content:         thisMsg,
+					Username:        stringWithMaxLength(cleanSender, 80),
+					AvatarURL:       getAvatarLink(msg.From),
+					TTS:             false,
+					Files:           nil,
+					Components:      nil,
+					Embeds:          nil,
+					Attachments:     nil,
+					AllowedMentions: nil,
+					Flags:           0,
+					ThreadName:      "",
+				})
+				if err != nil {
+					panic(fmt.Sprintf("error executing webhook: %e", err))
+				}
 			}
-		case msg := <-discordListener:
-			if msg.WebhookID == thisAppWebhook.ID {
-				continue
-			}
+		}, func() {
+			for {
+				select {
+				case msg := <-discordListener:
+					if msg.WebhookID == thisAppWebhook.ID {
+						continue
+					}
 
-			send <- api.Message{
-				Room: "#main",
-				From: "\x1b[95mD@\x1b[0m " + msg.Author.Username,
-				Data: msg.Content,
+					(*send)(api.Message{
+						Room: "#main",
+						From: "\x1b[95mD@\x1b[0m " + msg.Author.Username,
+						Data: msg.Content,
+					})
+				case <-ctx.Done():
+					return
+				}
 			}
-		case <-ctx.Done():
-			return
 		}
-	}
 }
 
 func getAvatarImage(name string) image.Image {

@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/mattn/go-sqlite3 v1.14.45 // indirect
 	github.com/quackduck/devzat/plugin v0.0.0-20250617152003-518d08bba115 // indirect

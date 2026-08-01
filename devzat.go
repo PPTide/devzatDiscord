@@ -6,7 +6,7 @@ import (
 	api "github.com/quackduck/devzat/devzatapi"
 )
 
-func setupDevzat(devzatURL, devzatApiKey string, send chan<- api.Message, receive <-chan api.Message, ctx context.Context) {
+func setupDevzat(devzatURL, devzatApiKey string, send *messageSendFunc, ctx context.Context) (messageSendFunc, func()) {
 	devSess, err := api.NewSession(devzatURL, devzatApiKey)
 	if err != nil {
 		panic(err)
@@ -17,17 +17,19 @@ func setupDevzat(devzatURL, devzatApiKey string, send chan<- api.Message, receiv
 		panic(err)
 	}
 
-	for {
-		select {
-		case msg := <-listener:
-			send <- msg
-		case msg := <-receive:
+	return func(msg api.Message) {
 			err := devSess.SendMessage(msg)
 			if err != nil {
 				panic(err)
 			}
-		case <-ctx.Done():
-			return
+		}, func() {
+			for {
+				select {
+				case msg := <-listener:
+					(*send)(msg)
+				case <-ctx.Done():
+					return
+				}
+			}
 		}
-	}
 }

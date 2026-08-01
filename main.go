@@ -50,6 +50,8 @@ var idToContextCancel = make(map[uint64]context.CancelFunc)
 var db *sql.DB
 var dbLock = sync.Mutex{}
 
+type messageSendFunc func(api.Message)
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -101,14 +103,17 @@ func main() {
 			panic(err)
 		}
 
-		sendToDiscord := make(chan api.Message, 5)
-		sendToDevzat := make(chan api.Message, 5)
+		var sendToDiscord messageSendFunc
+		var sendToDevzat messageSendFunc
 
 		ctx, cancel := context.WithCancel(ctx)
 		idToContextCancel[id] = cancel
 
-		go dis.setupDiscord(channelID, sendToDevzat, sendToDiscord, ctx)
-		go setupDevzat(devzatURL, devzatKey, sendToDiscord, sendToDevzat, ctx)
+		sendToDiscord, bgFuncDis := dis.setupDiscord(channelID, &sendToDevzat, ctx)
+		sendToDevzat, bgFuncDev := setupDevzat(devzatURL, devzatKey, &sendToDiscord, ctx)
+
+		go bgFuncDis()
+		go bgFuncDev()
 	}
 
 	http.HandleFunc("/avatar/{small}", func(w http.ResponseWriter, r *http.Request) {
@@ -170,14 +175,17 @@ WHERE guild_id=?`, guildID, newChannelID, newDevzatURL, newDevzatKey, newChannel
 		cancel()
 	}
 
-	sendToDiscord := make(chan api.Message, 5)
-	sendToDevzat := make(chan api.Message, 5)
+	var sendToDiscord messageSendFunc
+	var sendToDevzat messageSendFunc
 
 	ctx, cancel = context.WithCancel(ctx)
 	idToContextCancel[id] = cancel
 
-	go d.setupDiscord(newChannelID, sendToDevzat, sendToDiscord, ctx)
-	go setupDevzat(newDevzatURL, newDevzatKey, sendToDiscord, sendToDevzat, ctx)
+	sendToDiscord, bgFuncDis := d.setupDiscord(newChannelID, &sendToDevzat, ctx)
+	sendToDevzat, bgFuncDev := setupDevzat(newDevzatURL, newDevzatKey, &sendToDiscord, ctx)
+
+	go bgFuncDis()
+	go bgFuncDev()
 }
 
 func stringWithMaxLength(s string, length int) string {
