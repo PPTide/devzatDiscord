@@ -1,7 +1,7 @@
 on: [push]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: docker
     steps:
       - uses: actions/checkout@v6
       - run: sh build/docker.sh
