@@ -1,10 +1,10 @@
 docker context create dind
 
 docker buildx create \
-    --name builder \
     --driver docker-container \
-    --context dind \
-    --use
+    --name builder \
+    --use \
+    dindπ
 
 docker buildx inspect --bootstrap
 
