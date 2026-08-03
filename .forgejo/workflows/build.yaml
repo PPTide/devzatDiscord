@@ -4,4 +4,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: build/docker.sh
+      - run: sh build/docker.sh
