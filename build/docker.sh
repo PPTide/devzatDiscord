@@ -4,7 +4,7 @@ docker buildx create \
     --driver docker-container \
     --name builder \
     --use \
-    dindπ
+    dind
 
 docker buildx inspect --bootstrap
 
