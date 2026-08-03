@@ -1,7 +1,12 @@
-docker buildx create --driver docker-container --use --name builder || docker buildx use builder
-docker buildx inspect --bootstrap
+docker context create dind
 
-docker login git.pptie.de -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+docker buildx create \
+    --name builder \
+    --driver docker-container \
+    --context dind \
+    --use
+
+docker buildx inspect --bootstrap
 
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
